@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Маршрут на Яндекс Картах</title>
+    <script src="https://api-maps.yandex.ru/2.1/?apikey=1ca18b9d-6ea2-4454-a898-f9e07271e23b&lang=ru_RU"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+        .controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            background: white;
+            border-radius: 12px;
+            padding: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            z-index: 1000;
+            max-width: 400px;
+            margin: 0 auto;
+        }
+        .input-group {
+            margin-bottom: 10px;
+        }
+        .input-group label {
+            display: block;
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 4px;
+        }
+        .input-group input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        .result {
+            background: #f0f9ff;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        .result-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        .result-label {
+            color: #666;
+        }
+        .result-value {
+            font-weight: 600;
+            color: #000;
+        }
+        .button {
+            background: #007aff;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 20px;
+            font-size: 16px;
+            font-weight: 600;
+            width: 100%;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+        .button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .error {
+            color: #ff3b30;
+            font-size: 14px;
+            margin-top: 8px;
+            display: none;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            display: none;
+        }
+        .loading::after {
+            content: "⏳ Загружаем маршрут...";
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <div class="input-group">
+            <label>📍 Откуда</label>
+            <input type="text" id="from" placeholder="Например: ул. Ленинская, 25">
+        </div>
+        <div class="input-group">
+            <label>📍 Куда</label>
+            <input type="text" id="to" placeholder="Например: ж/д вокзал">
+        </div>
+        
+        <div class="loading" id="loading"></div>
+        <div class="error" id="error"></div>
+        
+        <div class="result" id="result" style="display: none;">
+            <div class="result-item">
+                <span class="result-label">📏 Расстояние:</span>
+                <span class="result-value" id="distance">0 км</span>
+            </div>
+            <div class="result-item">
+                <span class="result-label">⏱ Время в пути:</span>
+                <span class="result-value" id="time">0 мин</span>
+            </div>
+            <div class="result-item">
+                <span class="result-label">💰 Примерная цена:</span>
+                <span class="result-value" id="price">0 BYN</span>
+            </div>
+        </div>
+        
+        <button class="button" id="calcBtn" onclick="calculateRoute()">🚖 Рассчитать маршрут</button>
+        <button class="button" id="confirmBtn" style="background: #34c759; display: none;" onclick="confirmAndSend()">✅ Подтвердить и заказать</button>
+    </div>
+    
+    <div id="map"></div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        tg.MainButton.hide();
+
+        let myMap;
+        let routeData = null;
+        let fromCoords = null;
+        let toCoords = null;
+        
+        // Получаем данные из URL (их передаст бот)
+        const urlParams = new URLSearchParams(window.location.search);
+        const fromAddress = urlParams.get('from') || '';
+        const toAddress = urlParams.get('to') || '';
+        
+        document.getElementById('from').value = fromAddress;
+        document.getElementById('to').value = toAddress;
+
+        ymaps.ready(initMap);
+
+        function initMap() {
+            myMap = new ymaps.Map('map', {
+                center: [53.8945, 30.3323], // Центр Могилева
+                zoom: 12,
+                controls: ['zoomControl']
+            });
+
+            // Добавляем поисковую строку
+            const searchControl = new ymaps.control.SearchControl({
+                options: {
+                    useMapBounds: true,
+                    noCentering: true
+                }
+            });
+            myMap.controls.add(searchControl);
+
+            // Если оба адреса уже есть - строим маршрут
+            if (fromAddress && toAddress) {
+                setTimeout(() => {
+                    document.getElementById('calcBtn').click();
+                }, 1000);
+            }
+        }
+
+        async function calculateRoute() {
+            const from = document.getElementById('from').value.trim();
+            const to = document.getElementById('to').value.trim();
+            
+            if (!from || !to) {
+                showError('Пожалуйста, заполните оба адреса');
+                return;
+            }
+
+            showLoading(true);
+            hideResult();
+
+            try {
+                // Геокодируем адреса
+                const [fromResult, toResult] = await Promise.all([
+                    geocodeAddress(from),
+                    geocodeAddress(to)
+                ]);
+
+                if (!fromResult) {
+                    showError('Не удалось найти адрес: ' + from);
+                    return;
+                }
+                if (!toResult) {
+                    showError('Не удалось найти адрес: ' + to);
+                    return;
+                }
+
+                fromCoords = fromResult;
+                toCoords = toResult;
+
+                // Строим маршрут
+                const route = await buildRoute(fromResult, toResult);
+                
+                if (route) {
+                    routeData = route;
+                    showResult(route);
+                    showConfirmButton(true);
+                } else {
+                    showError('Не удалось построить маршрут');
+                }
+            } catch (error) {
+                console.error('Ошибка:', error);
+                showError('Произошла ошибка при расчете маршрута');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function geocodeAddress(address) {
+            return new Promise((resolve) => {
+                ymaps.geocode(address, { 
+                    results: 1,
+                    boundedBy: myMap.getBounds()
+                }).then(res => {
+                    const firstGeoObject = res.geoObjects.get(0);
+                    if (firstGeoObject) {
+                        resolve(firstGeoObject.geometry.getCoordinates());
+                    } else {
+                        resolve(null);
+                    }
+                }).catch(() => resolve(null));
+            });
+        }
+
+        async function buildRoute(from, to) {
+            return new Promise((resolve) => {
+                ymaps.route([from, to], {
+                    mapStateAutoApply: true,
+                    avoidTrafficJams: true
+                }).then(route => {
+                    myMap.geoObjects.removeAll();
+                    myMap.geoObjects.add(route);
+                    
+                    const time = route.getHumanJamsTime(); // Время с пробками
+                    const distance = route.getHumanLength(); // Расстояние
+                    
+                    // Примерная цена (можно подставить ваши тарифы)
+                    const distanceNum = parseFloat(distance);
+                    let price = 2.40; // Базовая цена
+                    
+                    if (!isNaN(distanceNum)) {
+                        price = 2.40 + (distanceNum * 0.55);
+                        // Округляем до 0.5
+                        price = Math.round(price * 2) / 2;
+                    }
+                    
+                    resolve({
+                        time: time,
+                        distance: distance,
+                        price: price.toFixed(2)
+                    });
+                }).catch(() => resolve(null));
+            });
+        }
+
+        function showResult(route) {
+            document.getElementById('distance').textContent = route.distance;
+            document.getElementById('time').textContent = route.time;
+            document.getElementById('price').textContent = route.price + ' BYN';
+            document.getElementById('result').style.display = 'block';
+        }
+
+        function hideResult() {
+            document.getElementById('result').style.display = 'none';
+        }
+
+        function showError(message) {
+            const errorEl = document.getElementById('error');
+            errorEl.textContent = message;
+            errorEl.style.display = 'block';
+            setTimeout(() => {
+                errorEl.style.display = 'none';
+            }, 3000);
+        }
+
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'block' : 'none';
+            document.getElementById('calcBtn').disabled = show;
+        }
+
+        function showConfirmButton(show) {
+            document.getElementById('confirmBtn').style.display = show ? 'block' : 'none';
+            document.getElementById('calcBtn').style.display = show ? 'none' : 'block';
+        }
+
+        function confirmAndSend() {
+            if (!routeData || !fromCoords || !toCoords) {
+                showError('Сначала рассчитайте маршрут');
+                return;
+            }
+
+            // Отправляем данные обратно в бота
+            tg.sendData(JSON.stringify({
+                from_address: document.getElementById('from').value,
+                to_address: document.getElementById('to').value,
+                from_lat: fromCoords[0],
+                from_lon: fromCoords[1],
+                to_lat: toCoords[0],
+                to_lon: toCoords[1],
+                distance: routeData.distance,
+                time: routeData.time,
+                price: routeData.price
+            }));
+
+            tg.close();
+        }
+    </script>
+</body>
+</html>
