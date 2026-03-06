@@ -243,7 +243,7 @@
                 }).catch(() => resolve(null));
             });
         }
-
+        
         async function buildRoute(from, to) {
             return new Promise((resolve) => {
                 ymaps.route([from, to], {
@@ -253,10 +253,23 @@
                     myMap.geoObjects.removeAll();
                     myMap.geoObjects.add(route);
                     
-                    const time = route.getHumanJamsTime(); // Время с пробками
-                    const distance = route.getHumanLength(); // Расстояние
+                    // Получаем "сырые" данные от Яндекса
+                    const rawTime = route.getHumanJamsTime(); // Время с пробками
+                    const rawDistance = route.getHumanLength(); // Расстояние
+                    
+                    // Функция для очистки текста от HTML-символов
+                    function cleanText(text) {
+                        if (!text) return text;
+                        // Заменяем HTML-код неразрывного пробела на обычный пробел
+                        return text.replace(/&#160;|&nbsp;/g, ' ');
+                    }
+                    
+                    // Очищаем данные
+                    const time = cleanText(rawTime);
+                    const distance = cleanText(rawDistance);
                     
                     // Примерная цена (можно подставить ваши тарифы)
+                    // Извлекаем число из строки (например, из "10 км" получаем 10)
                     const distanceNum = parseFloat(distance);
                     let price = 2.40; // Базовая цена
                     
