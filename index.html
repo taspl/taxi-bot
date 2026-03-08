@@ -128,18 +128,14 @@
         <div class="loading" id="loading"></div>
         <div class="error" id="error"></div>
         
-        <div class="result" id="result" style="display: none;">
-            <div class="result-item">
-                <span class="result-label">📏 Расстояние:</span>
-                <span class="result-value" id="distance">0 км</span>
-            </div>
-            <div class="result-item">
-                <span class="result-label">⏱ Время в пути:</span>
-                <span class="result-value" id="time">0 мин</span>
-            </div>
-            <div class="result-item">
-                <span class="result-label">💰 Примерная цена:</span>
-                <span class="result-value" id="price">0 BYN</span>
+       <div class="result" id="result" style="display: none;">
+    <div class="result-item">
+        <span class="result-label">📏 Расстояние:</span>
+        <span class="result-value" id="distance">0 км</span>
+    </div>
+    <div class="result-item">
+        <span class="result-label">⏱ Время в пути:</span>
+        <span class="result-value" id="time">0 мин</span>
             </div>
         </div>
         
@@ -390,55 +386,46 @@ function normalizeAddress(input) {
 }
         
         async function buildRoute(from, to) {
-            return new Promise((resolve) => {
-                ymaps.route([from, to], {
-                    mapStateAutoApply: true,
-                    avoidTrafficJams: true
-                }).then(route => {
-                    myMap.geoObjects.removeAll();
-                    myMap.geoObjects.add(route);
-                    
-                    // Получаем "сырые" данные от Яндекса
-                    const rawTime = route.getHumanJamsTime(); // Время с пробками
-                    const rawDistance = route.getHumanLength(); // Расстояние
-                    
-                    // Функция для очистки текста от HTML-символов
-                    function cleanText(text) {
-                        if (!text) return text;
-                        // Заменяем HTML-код неразрывного пробела на обычный пробел
-                        return text.replace(/&#160;|&nbsp;/g, ' ');
-                    }
-                    
-                    // Очищаем данные
-                    const time = cleanText(rawTime);
-                    const distance = cleanText(rawDistance);
-                    
-                    // Примерная цена (можно подставить ваши тарифы)
-                    // Извлекаем число из строки (например, из "10 км" получаем 10)
-                    const distanceNum = parseFloat(distance);
-                    let price = 2.40; // Базовая цена
-                    
-                    if (!isNaN(distanceNum)) {
-                        price = 2.40 + (distanceNum * 0.55);
-                        // Округляем до 0.5
-                        price = Math.round(price * 2) / 2;
-                    }
-                    
-                    resolve({
-                        time: time,
-                        distance: distance,
-                        price: price.toFixed(2)
-                    });
-                }).catch(() => resolve(null));
+    return new Promise((resolve) => {
+        ymaps.route([from, to], {
+            mapStateAutoApply: true,
+            avoidTrafficJams: true
+        }).then(route => {
+            myMap.geoObjects.removeAll();
+            myMap.geoObjects.add(route);
+            
+            // Получаем "сырые" данные от Яндекса
+            const rawTime = route.getHumanJamsTime(); // Время с пробками
+            const rawDistance = route.getHumanLength(); // Расстояние
+            
+            // Функция для очистки текста от HTML-символов
+            function cleanText(text) {
+                if (!text) return text;
+                return text.replace(/&#160;|&nbsp;/g, ' ');
+            }
+            
+            // Очищаем данные
+            const time = cleanText(rawTime);
+            const distance = cleanText(rawDistance);
+            
+            // Извлекаем числа для дальнейшего использования
+            const distanceNum = parseFloat(distance);
+            const timeNum = parseInt(time);
+            
+            resolve({
+                time: time,
+                distance: distance,
+                distance_num: distanceNum,  // Числовое значение расстояния
+                time_num: timeNum           // Числовое значение времени
             });
-        }
-
+        }).catch(() => resolve(null));
+    });
+}
         function showResult(route) {
-            document.getElementById('distance').textContent = route.distance;
-            document.getElementById('time').textContent = route.time;
-            document.getElementById('price').textContent = route.price + ' BYN';
-            document.getElementById('result').style.display = 'block';
-        }
+    document.getElementById('distance').textContent = route.distance;
+    document.getElementById('time').textContent = route.time;
+    document.getElementById('result').style.display = 'block';
+}
 
         function hideResult() {
             document.getElementById('result').style.display = 'none';
@@ -476,28 +463,29 @@ function normalizeAddress(input) {
         }
 
         function confirmAndSend() {
-            if (!routeData || !fromCoords || !toCoords) {
-                showError('Сначала рассчитайте маршрут');
-                return;
-            }
+    if (!routeData || !fromCoords || !toCoords) {
+        showError('Сначала рассчитайте маршрут');
+        return;
+    }
 
-            // Отправляем данные обратно в бота
-            tg.sendData(JSON.stringify({
-                from_address: document.getElementById('from').value,
-                to_address: document.getElementById('to').value,
-                from_lat: fromCoords[0],
-                from_lon: fromCoords[1],
-                to_lat: toCoords[0],
-                to_lon: toCoords[1],
-                distance: routeData.distance,
-                time: routeData.time,
-                price: routeData.price
-            }));
+    tg.sendData(JSON.stringify({
+        from_address: document.getElementById('from').value,
+        to_address: document.getElementById('to').value,
+        from_lat: fromCoords[0],
+        from_lon: fromCoords[1],
+        to_lat: toCoords[0],
+        to_lon: toCoords[1],
+        distance: routeData.distance,
+        time: routeData.time,
+        distance_num: routeData.distance_num,
+        time_num: routeData.time_num
+    }));
 
-            tg.close();
-        }
+    tg.close();
+}
     </script>
 </body>
 </html>
+
 
 
