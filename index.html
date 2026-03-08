@@ -409,15 +409,26 @@ function normalizeAddress(input) {
             const time = cleanText(rawTime);
             const distance = cleanText(rawDistance);
             
-            // Извлекаем числа для дальнейшего использования
+            // ИЗВЛЕКАЕМ ЧИСЛА ИЗ СТРОК
+            // Например, из "10 км" получаем 10, из "17 мин" получаем 17
             const distanceNum = parseFloat(distance);
             const timeNum = parseInt(time);
             
+            // Добавляем отладочный вывод в консоль браузера
+            console.log('=== ОТЛАДКА buildRoute ===');
+            console.log('rawDistance:', rawDistance);
+            console.log('distance (очищенный):', distance);
+            console.log('distance_num:', distanceNum);
+            console.log('rawTime:', rawTime);
+            console.log('time (очищенный):', time);
+            console.log('time_num:', timeNum);
+            console.log('===========================');
+            
             resolve({
-                time: time,
-                distance: distance,
-                distance_num: distanceNum,  // Числовое значение расстояния
-                time_num: timeNum           // Числовое значение времени
+                time: time,                 // "17 мин" для отображения
+                distance: distance,         // "10 км" для отображения
+                distance_num: distanceNum,  // 10 для расчетов
+                time_num: timeNum           // 17 для расчетов
             });
         }).catch(() => resolve(null));
     });
@@ -476,10 +487,8 @@ function normalizeAddress(input) {
         from_lon: fromCoords[1],
         to_lat: toCoords[0],
         to_lon: toCoords[1],
-        distance: routeData.distance,
-        time: routeData.time,
-        distance_num: routeData.distance_num,
-        time_num: routeData.time_num
+        distance: routeData.distance_num,  // Только число!
+        time: routeData.time_num            // Только число!
     }));
 
     tg.close();
@@ -487,6 +496,7 @@ function normalizeAddress(input) {
     </script>
 </body>
 </html>
+
 
 
 
