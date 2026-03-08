@@ -110,7 +110,9 @@
             <label>📍 Куда</label>
             <input type="text" id="to" placeholder="Например: ж/д вокзал">
         </div>
-        
+        <div style="background: #e8f5e9; padding: 8px; border-radius: 8px; margin-bottom: 10px; font-size: 13px; color: #2e7d32;">
+            📍 Поиск работает только по Могилеву и Могилевскому району
+        </div>        
         <div class="loading" id="loading"></div>
         <div class="error" id="error"></div>
         
@@ -130,7 +132,7 @@
         </div>
         
         <button class="button" id="calcBtn" onclick="calculateRoute()">🚖 Рассчитать маршрут</button>
-        <button class="button" id="confirmBtn" style="background: #34c759; display: none;" onclick="confirmAndSend()">✅ Подтвердить и заказать</button>
+        <button class="button" id="confirmBtn" style="background: #34c759; display: none;" onclick="confirmAndSend()">✅ Подтвердить </button>
     </div>
     
     <div id="map"></div>
@@ -179,70 +181,108 @@
             }
         }
 
-        async function calculateRoute() {
-            const from = document.getElementById('from').value.trim();
-            const to = document.getElementById('to').value.trim();
-            
-            if (!from || !to) {
-                showError('Пожалуйста, заполните оба адреса');
-                return;
-            }
+       async function calculateRoute() {
+    const from = document.getElementById('from').value.trim();
+    const to = document.getElementById('to').value.trim();
+    
+    if (!from || !to) {
+        showError('Пожалуйста, заполните оба адреса');
+        return;
+    }
 
-            showLoading(true);
-            hideResult();
+    showLoading(true);
+    hideResult();
 
-            try {
-                // Геокодируем адреса
-                const [fromResult, toResult] = await Promise.all([
-                    geocodeAddress(from),
-                    geocodeAddress(to)
-                ]);
+    try {
+        // Геокодируем адреса
+        const [fromResult, toResult] = await Promise.all([
+            geocodeAddress(from),
+            geocodeAddress(to)
+        ]);
 
-                if (!fromResult) {
-                    showError('Не удалось найти адрес: ' + from);
-                    return;
-                }
-                if (!toResult) {
-                    showError('Не удалось найти адрес: ' + to);
-                    return;
-                }
-
-                fromCoords = fromResult;
-                toCoords = toResult;
-
-                // Строим маршрут
-                const route = await buildRoute(fromResult, toResult);
-                
-                if (route) {
-                    routeData = route;
-                    showResult(route);
-                    showConfirmButton(true);
-                } else {
-                    showError('Не удалось построить маршрут');
-                }
-            } catch (error) {
-                console.error('Ошибка:', error);
-                showError('Произошла ошибка при расчете маршрута');
-            } finally {
-                showLoading(false);
-            }
+        if (!fromResult) {
+            showError('❌ Не удалось найти адрес отправления в Могилеве');
+            return;
         }
+        if (!toResult) {
+            showError('❌ Не удалось найти адрес назначения в Могилеве');
+            return;
+        }
+
+        fromCoords = fromResult;
+        toCoords = toResult;
+
+        // Строим маршрут
+        const route = await buildRoute(fromResult, toResult);
+        
+        if (route) {
+            routeData = route;
+            showResult(route);
+            showConfirmButton(true);
+        } else {
+            showError('Не удалось построить маршрут');
+        }
+    } catch (error) {
+        console.error('Ошибка:', error);
+        showError('Произошла ошибка при расчете маршрута');
+    } finally {
+        showLoading(false);
+    }
+}
 
         async function geocodeAddress(address) {
-            return new Promise((resolve) => {
-                ymaps.geocode(address, { 
-                    results: 1,
-                    boundedBy: myMap.getBounds()
-                }).then(res => {
-                    const firstGeoObject = res.geoObjects.get(0);
-                    if (firstGeoObject) {
-                        resolve(firstGeoObject.geometry.getCoordinates());
-                    } else {
-                        resolve(null);
-                    }
-                }).catch(() => resolve(null));
-            });
+    return new Promise((resolve) => {
+        // Добавляем "Могилев" к запросу, если его там нет
+        let searchQuery = address;
+        if (!address.toLowerCase().includes('могил')) {
+            searchQuery = address + ', Могилев, Беларусь';
         }
+        
+        ymaps.geocode(searchQuery, { 
+            results: 5,  // Получаем несколько результатов
+            boundedBy: [[53.7, 30.0], [54.2, 30.8]]  // Ограничиваем область поиска Могилевским районом
+        }).then(res => {
+            const geoObjects = res.geoObjects;
+            
+            if (geoObjects.getLength() === 0) {
+                showError('❌ Адрес не найден. Проверьте правильность ввода.');
+                resolve(null);
+                return;
+            }
+            
+            // Ищем первый результат в Могилеве
+            let foundInMogilev = null;
+            
+            for (let i = 0; i < geoObjects.getLength(); i++) {
+                const obj = geoObjects.get(i);
+                const coords = obj.geometry.getCoordinates();
+                const lat = coords[0];
+                const lon = coords[1];
+                
+                // Проверяем, что координаты в Могилевском районе
+                if (lat >= 53.7 && lat <= 54.2 && lon >= 30.0 && lon <= 30.8) {
+                    const objAddress = obj.getAddressLine().toLowerCase();
+                    if (objAddress.includes('могил') || objAddress.includes('mogi')) {
+                        foundInMogilev = obj;
+                        break;
+                    }
+                }
+            }
+            
+            if (foundInMogilev) {
+                resolve(foundInMogilev.geometry.getCoordinates());
+            } else {
+                // Показываем, что именно искали
+                const searchPreview = searchQuery.length > 30 ? searchQuery.substring(0, 30) + '...' : searchQuery;
+                showError(`❌ Адрес "${searchPreview}" не найден в Могилеве.\n\nПожалуйста, уточните: укажите улицу и номер дома.`);
+                resolve(null);
+            }
+        }).catch(() => {
+            showError('Ошибка при поиске адреса. Попробуйте еще раз.');
+            resolve(null);
+        });
+    });
+}
         
         async function buildRoute(from, to) {
             return new Promise((resolve) => {
@@ -342,3 +382,4 @@
     </script>
 </body>
 </html>
+
