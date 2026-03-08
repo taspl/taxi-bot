@@ -396,8 +396,11 @@ function normalizeAddress(input) {
             myMap.geoObjects.add(route);
             
             // Получаем "сырые" данные от Яндекса
-            const rawTime = route.getHumanJamsTime(); // Время с пробками
-            const rawDistance = route.getHumanLength(); // Расстояние
+            const rawTime = route.getHumanJamsTime();
+            const rawDistance = route.getHumanLength();
+            
+            console.log('🔍 RAW distance from Yandex:', rawDistance);
+            console.log('🔍 RAW time from Yandex:', rawTime);
             
             // Функция для очистки текста от HTML-символов
             function cleanText(text) {
@@ -405,32 +408,68 @@ function normalizeAddress(input) {
                 return text.replace(/&#160;|&nbsp;/g, ' ');
             }
             
-            // Очищаем данные
             const time = cleanText(rawTime);
             const distance = cleanText(rawDistance);
             
-            // ИЗВЛЕКАЕМ ЧИСЛА ИЗ СТРОК
-            // Например, из "10 км" получаем 10, из "17 мин" получаем 17
-            const distanceNum = parseFloat(distance);
+            console.log('📏 Cleaned distance:', distance);
+            console.log('⏱ Cleaned time:', time);
+            
+            // УНИВЕРСАЛЬНОЕ ИЗВЛЕЧЕНИЕ РАССТОЯНИЯ
+            let distanceNum;
+            
+            if (distance.includes('км')) {
+                // Если есть "км" - просто берём число
+                distanceNum = parseFloat(distance.replace('км', '').trim());
+                console.log('📏 Парсим как км:', distanceNum);
+            } else if (distance.includes('м')) {
+                // Если есть "м" - это метры, нужно перевести в километры
+                const meters = parseFloat(distance.replace('м', '').trim());
+                distanceNum = meters / 1000;
+                console.log('📏 Парсим как метры:', meters, '->', distanceNum, 'км');
+            } else {
+                // Если непонятно, пробуем просто взять число
+                distanceNum = parseFloat(distance);
+                console.log('📏 Парсим как число:', distanceNum);
+            }
+            
+            // Если не получилось, пробуем извлечь число регулярным выражением
+            if (isNaN(distanceNum)) {
+                const match = distance.match(/[\d.,]+/);
+                if (match) {
+                    const numStr = match[0].replace(',', '.');
+                    distanceNum = parseFloat(numStr);
+                    console.log('📏 Извлекли регуляркой:', distanceNum);
+                    
+                    // Проверяем, не метры ли это (если число большое, > 100)
+                    if (distanceNum > 100 && !distance.includes('км')) {
+                        console.log('📏 Похоже на метры, делим на 1000');
+                        distanceNum = distanceNum / 1000;
+                    }
+                }
+            }
+            
+            // Финальная защита: если всё равно NaN, ставим 1 км
+            if (isNaN(distanceNum) || distanceNum <= 0) {
+                console.log('⚠️ Не удалось определить расстояние, ставим 1 км');
+                distanceNum = 1.0;
+            }
+            
+            // Извлекаем время
             const timeNum = parseInt(time);
             
-            // Добавляем отладочный вывод в консоль браузера
-            console.log('=== ОТЛАДКА buildRoute ===');
-            console.log('rawDistance:', rawDistance);
-            console.log('distance (очищенный):', distance);
-            console.log('distance_num:', distanceNum);
-            console.log('rawTime:', rawTime);
-            console.log('time (очищенный):', time);
-            console.log('time_num:', timeNum);
-            console.log('===========================');
+            console.log('✅ Итоговое distance_num:', distanceNum);
+            console.log('✅ Итоговое time_num:', timeNum);
             
             resolve({
-                time: time,                 // "17 мин" для отображения
-                distance: distance,         // "10 км" для отображения
-                distance_num: distanceNum,  // 10 для расчетов
-                time_num: timeNum           // 17 для расчетов
+                time: time,
+                distance: distance,
+                distance_num: distanceNum,
+                time_num: timeNum
             });
-        }).catch(() => resolve(null));
+        }).catch(err => {
+            console.error('❌ Ошибка построения маршрута:', err);
+            resolve(null);
+        });
     });
 }
         function showResult(route) {
@@ -496,6 +535,7 @@ function normalizeAddress(input) {
     </script>
 </body>
 </html>
+
 
 
 
