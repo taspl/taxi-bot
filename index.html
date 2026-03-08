@@ -89,6 +89,17 @@
             margin-top: 8px;
             display: none;
         }
+        .info {
+            background: #e3f2fd;
+            color: #0d47a1;
+            font-size: 14px;
+            margin-top: 8px;
+            padding: 10px;
+            border-radius: 8px;
+            display: none;
+            white-space: pre-line;
+            border-left: 4px solid #2196f3;
+        }
         .loading {
             text-align: center;
             padding: 20px;
@@ -98,6 +109,7 @@
             content: "⏳ Загружаем маршрут...";
             color: #666;
         }
+        
     </style>
 </head>
 <body>
@@ -146,7 +158,76 @@
         let routeData = null;
         let fromCoords = null;
         let toCoords = null;
-        
+
+        // Словарь популярных мест Могилева
+const POPULAR_PLACES = {
+    // Поликлиники детские
+    'детская поликлиника 1': 'ул. Езерской, 6, Могилев',
+    'детская поликлиника 2': 'Витебский проспект, 8, Могилев',
+    'детская поликлиника 3': 'ул. Лазаренко, 68, Могилев',
+    'детская поликлиника 4': 'ул. Симонова, 55б, Могилев',
+    'детская поликлиника': 'ул. Езерской, 6, Могилев',  // По умолчанию первая
+    
+    // Взрослые поликлиники
+    'поликлиника 1': 'ул. Пионерская, 15, Могилев',
+    'центральная поликлиника': 'ул. Пионерская, 15, Могилев',
+    'поликлиника 2': 'ул. Лазаренко, 64, Могилев',
+    'поликлиника 3': 'ул. Тишки Гартного, 2, Могилев',
+    'поликлиника 4': 'ул. Кожевенная, 10а, Могилев',
+    'поликлиника 5': 'пр-т Витебский, 42, Могилев',
+    'поликлиника 6': 'пр-т Шмидта, 41, Могилев',
+    'поликлиника 7': 'ул. Красного Флота, 4, Могилев',
+    'поликлиника 8': 'ул. Симонова, 57б, Могилев',
+    'поликлиника 9': 'пер. Березовский, 10, Могилев',
+    'поликлиника 10': 'ул. Крупской, 176, Могилев',
+    'поликлиника 11': 'ул. Вишневецкого, 10а, Могилев',
+    'поликлиника 12': 'ул. Белинского, 22а, Могилев',
+    
+    // Больницы
+    'детская областная больница': 'ул. Бялыницкого-Бирули, 9А, Могилев',
+    'областная больница': 'ул. Бялыницкого-Бирули, 12, Могилев',
+    'городская больница': 'ул. Боткина, 2А, Могилев',
+    'первосоветская больница': 'ул. Боткина, 2А, Могилев',
+    'больница №1': 'ул. Академика Павлова, 2, Могилев',
+    'лавсановская больница': 'ул. Академика Павлова, 2, Могилев',
+    'травмпункт': 'ул. Пионерская, 15, Могилев',
+    
+    // Вокзалы
+    'ж/д вокзал': 'Привокзальная площадь, 1, Могилев',
+    'жд вокзал': 'Привокзальная площадь, 1, Могилев',
+    'железнодорожный вокзал': 'Привокзальная площадь, 1, Могилев',
+    'автовокзал': 'ул. Ленинская, 93, Могилев',
+    
+    // Торговые центры
+    'атриум': 'ул. Первомайская, 57, Могилев'
+};
+
+// Функция для проверки и замены популярных мест
+function normalizeAddress(input) {
+    if (!input) return input;
+    
+    const lowerInput = input.toLowerCase().trim();
+    
+    // Прямое совпадение
+    if (POPULAR_PLACES[lowerInput]) {
+        return POPULAR_PLACES[lowerInput];
+    }
+    
+    // Проверяем, не ввел ли пользователь "поликлиника" без номера
+    if (lowerInput.includes('поликлиника') && !lowerInput.match(/поликлиника \d+/)) {
+        // Если просто "поликлиника" - показываем подсказку
+        showError('❗ Уточните номер поликлиники (1-12)');
+        return null;
+    }
+    
+    // Проверяем частичное совпадение для вокзалов
+    if (lowerInput.includes('вокзал')) {
+        return POPULAR_PLACES['ж/д вокзал'];
+    }
+    
+    return input;
+}
+       
         // Получаем данные из URL (их передаст бот)
         const urlParams = new URLSearchParams(window.location.search);
         const fromAddress = urlParams.get('from') || '';
@@ -190,14 +271,30 @@
         return;
     }
 
+    // Нормализуем адреса
+    const normalizedFrom = normalizeAddress(from);
+    const normalizedTo = normalizeAddress(to);
+    
+    if (!normalizedFrom || !normalizedTo) {
+        return; // Ошибка уже показана в normalizeAddress
+    }
+
+    // Если адреса изменились, обновляем поля ввода
+    if (normalizedFrom !== from) {
+        document.getElementById('from').value = normalizedFrom;
+    }
+    if (normalizedTo !== to) {
+        document.getElementById('to').value = normalizedTo;
+    }
+
     showLoading(true);
     hideResult();
 
     try {
         // Геокодируем адреса
         const [fromResult, toResult] = await Promise.all([
-            geocodeAddress(from),
-            geocodeAddress(to)
+            geocodeAddress(normalizedFrom),
+            geocodeAddress(normalizedTo)
         ]);
 
         if (!fromResult) {
@@ -219,6 +316,14 @@
             routeData = route;
             showResult(route);
             showConfirmButton(true);
+            
+            // Показываем сообщение, если адрес был автоматически исправлен
+            if (normalizedFrom !== from || normalizedTo !== to) {
+                let message = '';
+                if (normalizedFrom !== from) message += `\n📍 Откуда: "${from}" → "${normalizedFrom}"`;
+                if (normalizedTo !== to) message += `\n📍 Куда: "${to}" → "${normalizedTo}"`;
+                showInfo(message);
+            }
         } else {
             showError('Не удалось построить маршрут');
         }
@@ -348,6 +453,18 @@
             }, 3000);
         }
 
+        function showInfo(message) {
+    const errorEl = document.getElementById('error');
+    errorEl.textContent = message;
+    errorEl.style.backgroundColor = '#e3f2fd';
+    errorEl.style.color = '#0d47a1';
+    errorEl.style.display = 'block';
+    setTimeout(() => {
+        errorEl.style.display = 'none';
+        errorEl.style.backgroundColor = ''; // Сбрасываем цвет
+        errorEl.style.color = '';
+    }, 5000);
+}
         function showLoading(show) {
             document.getElementById('loading').style.display = show ? 'block' : 'none';
             document.getElementById('calcBtn').disabled = show;
@@ -382,4 +499,5 @@
     </script>
 </body>
 </html>
+
 
